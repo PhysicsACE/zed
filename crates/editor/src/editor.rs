@@ -26,6 +26,7 @@ mod hover_links;
 mod hover_popover;
 mod hunk_diff;
 mod indent_guides;
+mod sticky_scroll;
 mod inlay_hint_cache;
 mod inline_completion_provider;
 pub mod items;
@@ -82,6 +83,7 @@ use hover_popover::{hide_hover, HoverState};
 use hunk_diff::ExpandedHunks;
 pub(crate) use hunk_diff::HoveredHunk;
 use indent_guides::ActiveIndentGuidesState;
+use sticky_scroll::StickyScrollManager;
 use inlay_hint_cache::{InlayHintCache, InlaySplice, InvalidationStrategy};
 pub use inline_completion_provider::*;
 pub use items::MAX_TAB_TITLE_LEN;
@@ -561,6 +563,7 @@ pub struct Editor {
     file_header_size: u32,
     breadcrumb_header: Option<String>,
     focused_block: Option<FocusedBlock>,
+    sticky_scroll_manager: StickyScrollManager,
 }
 
 #[derive(Clone)]
@@ -1894,6 +1897,7 @@ impl Editor {
             previous_search_ranges: None,
             breadcrumb_header: None,
             focused_block: None,
+            sticky_scroll_manager: StickyScrollManager::default(),
         };
         this.tasks_update_task = Some(this.refresh_runnables(cx));
         this._subscriptions.extend(project_subscriptions);

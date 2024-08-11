@@ -1714,6 +1714,20 @@ impl EditorElement {
         relative_rows
     }
 
+    // fn calculate_relative_line_numbers_discrete(
+    //     &self,
+    //     snapshot: &EditorSnapshot,
+    //     rows: Vec<DisplayRow>,
+    //     relative_to: Option<DisplayRow>,
+    // ) -> HashMap<DisplayRow, DisplayRowDelta> {
+    //     let mut relative_rows: HashMap<DisplayRow, DisplayRowDelta> = Default::default();
+    //     let Some(relative_to) = relative_to else {
+    //         return relative_rows;
+    //     };
+
+
+    // }
+
     fn layout_line_numbers(
         &self,
         rows: Range<DisplayRow>,
@@ -1788,6 +1802,31 @@ impl EditorElement {
             .collect()
     }
 
+    fn layout_gutter_fold_toggles_discrete(
+        &self,
+        buffer_rows = Vec<MultiBufferRow>,
+        snapshot: &EditorSnapshot,
+        cx: &mut WindowContext,
+    ) -> Vec<Option<AnyElement>> {
+        let include_fold_statuses = EditorSettings::get_global(cx).gutter.folds
+            && snapshot.mode == EditorMode::Full
+            && self.editor.read(cx).is_singleton(cx);
+        
+        if include_fold_statuses {
+            buffer_rows
+                .into_iter()
+                .enumerate()
+                .map(|ix, multibuffer_row| {
+                    snapshot.render_fold_toggle(
+                        multibuffer_row,
+                        false,
+                        self.editor.clone(),
+                        cx,
+                    )
+                })
+        }
+    }
+
     fn layout_gutter_fold_toggles(
         &self,
         rows: Range<DisplayRow>,
@@ -1839,6 +1878,39 @@ impl EditorElement {
                 }
             })
             .collect()
+    }
+
+    fn layout_lines_discrete(
+        rows: Vec<DisplayRow>,
+        line_number_layouts: &[Option<ShapedLine>],
+        snapshot: &EditorSnapshot,
+        style: &EditorStyle,
+        cx: &mut WindowContext,
+    ) -> Vec<LineWithInvisibles> {
+        if rows.is_empty() {
+            return Vec::new();
+        }
+
+        let mut line_elements = Vec::new();
+        for (_, row) in rows.into_iter().enumerate() {
+            let chunks = snapshot.minimal_highlighted_chunks(
+                row..row + DisplayRow(1),
+                true,
+                style,
+            );
+            let row_elements = LineWithInvisibles::from_chunks(
+                chunks,
+                &style.text,
+                MAX_LINE_LEN,
+                1,
+                line_number_layouts,
+                snapshot.mode,
+                cx,
+            );
+            line_elements.extend(row_elements);
+        }
+
+        line_elements
     }
 
     fn layout_lines(
@@ -1901,6 +1973,71 @@ impl EditorElement {
         }
     }
 
+    fn layout_sticky_line_numbers(
+        &self,
+        rows: Vec<DisplayRow>,
+        buffer_rows: Vec<MultiBufferRow>
+        _active_row: &BTreeMap<DisplayRow, bool>,
+        newest_selection_head: Option<DisplayPoint>,
+        snapshot: &EditorSnapshot,
+        cx: &mut WindowContext,
+    ) -> Vec<Option<ShapedLine>> {
+        let include_line_numbers = snapshot.show_line_numbers.unwrap_or_else(|| {
+            EditorSettings::get_global(cx).gutter.line_numbers && snapshot.mode == EditorMode::Full
+        });
+        if !include_line_numbers {
+            return Vec::new();
+        }
+
+        let editor = self.editor.read(cx);
+        // let newest_selection_head = newest_selection_head.unwrap_or_else(|| {
+        //     let newest = editor.selections.newest::<Point>(cx);
+        //     SelectionLayout::new(
+        //         newest,
+        //         editor.selections.line_mode,
+        //         editor.cursor_shape,
+        //         &snapshot.display_snapshot,
+        //         true,
+        //         true,
+        //         None,
+        //     )
+        //     .head
+        // });
+        let font_size = self.style.text.font_size.to_pixels(cx.rem_size());
+        // let is_relative = EditorSettings::get_global(cx).relative_line_numbers;
+        // let relative_to = if is_relative {
+        //     Some(newest_selection_head.row())
+        // } else {
+        //     None
+        // };
+        // let relative_rows = self.calculate_relative_line_numbers_discrete(snapshot, rows.clone(), relative_to);
+        let mut line_number = String::new();
+        buffer_rows
+            .into_iter()
+            .enumerate()
+            .map(|ix, multibuffer_row| {
+                let display_row = rows[ix];
+                let color = cx.theme().colors().editor_line_number;
+                line_number.clear();
+                let default_number = nultibuffer_row.0 + 1;
+                write!(&mut line_number, "{default_number}").unwrap();
+                let run = TextRun {
+                    len: line_number.len(),
+                    font: self.style.text.font(),
+                    color,
+                    background_color: None,
+                    underline: None,
+                    strikethrough: None,
+                }
+                let shaped_line = cx
+                    .text_system()
+                    .shape_line(line_number.clone().into(), font_size, &[run])
+                    .unwrap();
+                Some(shaped_line)
+            })
+            .collect()
+    }
+
     fn prepaint_lines(
         &self,
         start_row: DisplayRow,
@@ -1914,6 +2051,30 @@ impl EditorElement {
         for (ix, line) in line_layouts.iter_mut().enumerate() {
             let row = start_row + DisplayRow(ix as u32);
             line.prepaint(
+                line_height,
+                scroll_pixel_position,
+                row,
+                content_origin,
+                &mut line_elements,
+                cx,
+            );
+        }
+        line_elements
+    }
+
+    fn prepaint_sticky_lines(
+        &self,
+        _rows: Vec<DisplayRow>,
+        line_layouts = &mut [LineWithInvisibles],
+        line_height: Pixels,
+        scroll_pixel_position: gpui::Point<Pixels>,
+        content_origin: gpui::Point<Pixels>,
+        cx: &mut WindowContext,
+    ) -> SmallVec<[AnyElement; 1]> {
+        let mut line_elements = SmallVec::new();
+        for (ix, line) in line_layouts.iter_mut().enumerate() {
+            let row = DisplayRow(ix as u32);
+            line.prepaint_pinned(
                 line_height,
                 scroll_pixel_position,
                 row,
@@ -2380,6 +2541,24 @@ impl EditorElement {
         }
 
         (element, final_size)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn render_sticky_header(
+        &self,
+        rows: Vec<DisplayRow>,
+        snapshot: &EditorSnapshot,
+        hitbox: &Hitbox,
+        text_hitbox: &Hitbox,
+        scroll_width: &mut Pixels,
+        gutter_dimensions: &GutterDimensions,
+        em_width: Pixels,
+        text_x: Pixels,
+        line_height: Pixels,
+        line_layouts: &[LineWithInvisibles],
+        cx: &mut WindowContext,
+    ) -> Result<StickyLayout> {
+
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2902,6 +3081,8 @@ impl EditorElement {
             let gutter_bg = cx.theme().colors().editor_gutter_background;
             cx.paint_quad(fill(layout.gutter_hitbox.bounds, gutter_bg));
             cx.paint_quad(fill(layout.text_hitbox.bounds, self.style.background));
+            cx.paint_quad(fill(layout.sticky_gutter.bounds, gutter_bg));
+            cx.paint_quad(fill(layout.sticky_text_hitbox.bounds, self.style.background));
 
             if let EditorMode::Full = layout.mode {
                 let mut active_rows = layout.active_rows.iter().peekable();
@@ -3138,6 +3319,24 @@ impl EditorElement {
         }
     }
 
+    fn paint_sticky_line_numbers(&mut self, layout: &mut EditorLayout, cx: &mut WindowContext) {
+        let line_height = layout.position_map.line_height;
+        cx.set_cursor_style(CursorStyle::Arrow, &layout.sticky_gutter);
+
+        for (ix, line) in layout.sticky_line_numbers.iter().enumerate() {
+            if let Some(line) = line {
+                let line_origin = layout.sticky_gutter.origin
+                    + point(
+                        layout.sticky_gutter.size.width
+                            - line.width
+                            - layout.gutter_dimensions.right_padding,
+                        ix as f32 * line_height,
+                    );
+                line.paint(line_origin, line_height, cx).log_err();
+            }
+        }
+    }
+
     fn paint_diff_hunks(layout: &mut EditorLayout, cx: &mut WindowContext) {
         if layout.display_hunks.is_empty() {
             return;
@@ -3289,6 +3488,16 @@ impl EditorElement {
         });
     }
 
+    fn paint_sticky_gutter_indicators(&self, layout: &mut EditorLayout, cx: &mut WindowContext) {
+        cx.paint_layer(layout.sticky_gutter.bounds, |cx| {
+            cx.with_element_namespace("sticky_gutter_fold_toggles", |cx| {
+                for fold_indicator in layout.sticky_gutter_fold_toggles.iter_mut().flatten() {
+                    fold_indicator.paint(cx);
+                }
+            });
+        });
+    }
+
     fn paint_gutter_highlights(&self, layout: &mut EditorLayout, cx: &mut WindowContext) {
         for (_, hunk_hitbox) in &layout.display_hunks {
             if let Some(hunk_hitbox) = hunk_hitbox {
@@ -3385,6 +3594,18 @@ impl EditorElement {
         )
     }
 
+    fn paint_sticky_text(&mut self, layout: &mut EditorLayout, cx: &mut WindowContext) {
+        cx.with_content_mask(
+            Some(ContentMask {
+                bounds: layout.sticky_text_hitbox.bounds,
+            }),
+            |cx| {
+                cx.set_cursor_style(CursorStyle::PointingHand, &layout.sticky_text_hitbox);
+                self.paint_lines(&[], layout, cx);
+            },
+        )
+    }
+
     fn paint_highlights(
         &mut self,
         layout: &mut EditorLayout,
@@ -3424,6 +3645,37 @@ impl EditorElement {
             }
             invisible_display_ranges
         })
+    }
+
+    fn paint_sticky_lines(
+        &mut self,
+        invisible_display_ranges: &[Range<DisplayPoint>],
+        layout: &mut EditorLayout,
+        cx: &mut WindowContext,
+    ) {
+        let whitespace_setting = self
+            .editor
+            .read(cx)
+            .buffer
+            .read(cx)
+            .settings_at(0, cx)
+            .show_whitespaces;
+
+        for (ix, line_with_invisibles) in layout.position_map.sticky_line_layouts.iter().enumerate() {
+            let row = DisplayRow(ix as u32);
+            line_with_invisibles.draw(
+                layout,
+                row,
+                layout.content_origin,
+                whitespace_setting,
+                invisible_display_ranges,
+                cx,
+            )
+        }
+
+        for line_element in &mut layout.sticky_line_elements {
+            line_element.paint(cx);
+        }
     }
 
     fn paint_lines(
@@ -4527,6 +4779,76 @@ impl LineWithInvisibles {
         }
     }
 
+    fn prepaint_pinned(
+        &mut self,
+        line_height: Pixels,
+        scroll_pixel_position: gpui::Point<Pixels>,
+        row: DisplayRow,
+        content_origin: gpui::Point<Pixels>,
+        line_elements: &mut SmallVec<[AnyElement; 1]>,
+        cx: &mut WindowContext,
+    ) {
+        let line_y = line_height * row.as_f32();
+        let mut fragment_origin = content_origin + gpui::point(-scroll_pixel_position.x, line_y);
+        for fragment in &mut self.fragments {
+            match fragment {
+                LineFragment::Text(line) => {
+                    fragment_origin.x += line.width;
+                }
+                LineFragment::Element { element, size, .. } => {
+                    let mut element = element
+                        .take()
+                        .expect("you can't prepaint LineWithInvisibles twice");
+
+                    // Center the element vertically within the line.
+                    let mut element_origin = fragment_origin;
+                    element_origin.y += (line_height - size.height) / 2.;
+                    element.prepaint_at(element_origin, cx);
+                    line_elements.push(element);
+
+                    fragment_origin.x += size.width;
+                }
+            }
+        }
+    }
+
+    fn draw_pinned(
+        &self,
+        layout: &EditorLayout,
+        row: DisplayRow,
+        content_origin: gpui::Point<Pixels>,
+        whitespace_setting: ShowWhitespaceSetting,
+        selection_ranges: &[Range<DisplayPoint>],
+        cx: &mut WindowContext,
+    ) {
+        let line_height = layout.position_map.line_height;
+        let line_y = line_height * row.as_f32();
+        let mut fragment_origin = content_origin + gpui::point(-layout.position_map.scroll_pixel_position.x, line_y);
+        for fragment in &self.fragments {
+            match fragment {
+                LineFragment::Text(line) => {
+                    line.paint(fragment_origin, line_height, cx).log_err();
+                    fragment_origin.x += line.width;
+                }
+                LineFragment::Element { size, .. } => {
+                    fragment_origin.x += size.width;
+                }
+            }
+        }
+
+        self.draw_invisibles(
+            &selection_ranges,
+            layout,
+            content_origin,
+            line_y,
+            row,
+            line_height,
+            whitespace_setting,
+            cx,
+        );
+
+    }
+
     fn draw(
         &self,
         layout: &EditorLayout,
@@ -4947,6 +5269,10 @@ impl Element for EditorElement {
                     );
                     let text_width = bounds.size.width - gutter_dimensions.width;
 
+                    let sticky_header_elements = self.editor.get_sticky_lines();
+                    let sticky_header_height = sticky_header_elements * line_height;
+                    let text_height = bounds.size.height - sticky_header_height;
+
                     let right_margin = if snapshot.mode == EditorMode::Full {
                         EditorElement::SCROLLBAR_WIDTH
                     } else {
@@ -4957,7 +5283,8 @@ impl Element for EditorElement {
                     snapshot = self.editor.update(cx, |editor, cx| {
                         editor.last_bounds = Some(bounds);
                         editor.gutter_dimensions = gutter_dimensions;
-                        editor.set_visible_line_count(bounds.size.height / line_height, cx);
+                        editor.set_sticky_header_height(sticky_header_height, cx);
+                        editor.set_visible_line_count(text_height / line_height, cx);
 
                         if matches!(editor.mode, EditorMode::AutoHeight { .. }) {
                             snapshot
@@ -4992,12 +5319,34 @@ impl Element for EditorElement {
                         .collect::<SmallVec<[_; 2]>>();
 
                     let hitbox = cx.insert_hitbox(bounds, false);
-                    let gutter_hitbox =
-                        cx.insert_hitbox(gutter_bounds(bounds, gutter_dimensions), false);
+                    let sticky_hitbox = cx.insert_hitbox(
+                        Bounds {
+                            origin: bounds.origin,
+                            size = size(bounds.size.width, sticky_header_height),
+                        }
+                    )
+                    let sticky_gutter = cs.insert_hitbox(
+                        Bounds {
+                            origin: bounds.origin,
+                            size: size(gutter_dimensions.width, sticky_header_height),
+                        }
+                    )
+                    let sticky_text_hitbox = cx.insert_hitbox(
+                        Bounds {
+                            origin: sticky_gutter.upper_right(),
+                            size: size(text_width, sticky_header_height),
+                        }
+                    )
+                    let gutter_hitbox = cx.insert_hitbox(
+                        Bounds {
+                            origin: sticky_hitbox.lower_left(),
+                            size = size(gutter_dimensions.width, text_height),
+                        }
+                    )
                     let text_hitbox = cx.insert_hitbox(
                         Bounds {
                             origin: gutter_hitbox.upper_right(),
-                            size: size(text_width, bounds.size.height),
+                            size: size(text_width, text_height),
                         },
                         false,
                     );
@@ -5006,7 +5355,7 @@ impl Element for EditorElement {
                     let content_origin =
                         text_hitbox.origin + point(gutter_dimensions.margin, Pixels::ZERO);
 
-                    let height_in_lines = bounds.size.height / line_height;
+                    let height_in_lines = text_height / line_height;
                     let max_row = snapshot.max_point().row().as_f32();
                     let max_scroll_top = if matches!(snapshot.mode, EditorMode::AutoHeight { .. }) {
                         (max_row - height_in_lines + 1.).max(0.)
@@ -5049,6 +5398,21 @@ impl Element for EditorElement {
                         .buffer_rows(start_row)
                         .take((start_row..end_row).len())
                         .collect::<Vec<_>>();
+
+                    // TODO: get the sticky display rows
+                    // let sticky_rows = ...
+                    // let start_sticky_row = sticky_rows.first().unwrap();
+                    // let end_sticky_row = sticky_rows.last().unwrap();
+                    // let start_sticky_anchor = snapshot.
+                    //     .buffer_snapshot
+                    //     .anchor_before(
+                    //         DisplayPoint::new(start_sticky_row, 0).to_offset(&snapshot, Bias::Left),
+                    //     )
+                    // let end_sticky_anchor = snapshot
+                    //     .buffer_snapshot
+                    //     .anchor_before(
+                    //         DisplayPoint::new(end_sticky_row, 0).to_offset(&snapshot, Bias::Right),
+                    //     )
 
                     let start_anchor = if start_row == Default::default() {
                         Anchor::min()
@@ -5127,6 +5491,13 @@ impl Element for EditorElement {
                     );
 
                     let mut max_visible_line_width = Pixels::ZERO;
+                    let mut sticky_line_layouts = Self::layout_lines_discrete(
+                        sticky_rows,
+                        &sticky_line_numbers,
+                        &snapshot,
+                        &self.style,
+                        cx,
+                    );
                     let mut line_layouts = Self::layout_lines(
                         start_row..end_row,
                         &line_numbers,
@@ -5134,6 +5505,11 @@ impl Element for EditorElement {
                         &self.style,
                         cx,
                     );
+                    for line_with_invisibles in &sticky_line_layouts {
+                        if line_with_invisibles.width > max_visible_line_width {
+                            max_visible_line_width = line_with_invisibles.width;
+                        }
+                    }
                     for line_with_invisibles in &line_layouts {
                         if line_with_invisibles.width > max_visible_line_width {
                             max_visible_line_width = line_with_invisibles.width;
@@ -5169,6 +5545,22 @@ impl Element for EditorElement {
                             return self.prepaint(None, bounds, &mut (), cx);
                         }
                     };
+
+                    let sticky_header = cs.with_element_namespace("sticky_header", |cs| {
+                        self.render_sticky_header(
+                            sticky_rows,
+                            &snapshot,
+                            &hitbox,
+                            &sticky_text_hitbox,
+                            &mut scroll_width,
+                            &gutter_dimensions,
+                            em_width,
+                            gutter_dimensions.full_width(),
+                            line_height,
+                            &sticky_line_layouts,
+                            cx,
+                        )
+                    });
 
                     let start_buffer_row =
                         MultiBufferRow(start_anchor.to_point(&snapshot.buffer_snapshot).row);
@@ -5641,13 +6033,16 @@ impl Element for EditorElement {
                     if layout.gutter_hitbox.size.width > Pixels::ZERO {
                         self.paint_blamed_display_rows(layout, cx);
                         self.paint_line_numbers(layout, cx);
+                        self.paint_sticky_line_numbers(layout, cx);
                     }
 
                     self.paint_text(layout, cx);
+                    self.paint_sticky_text(layout, cx);
 
                     if layout.gutter_hitbox.size.width > Pixels::ZERO {
                         self.paint_gutter_highlights(layout, cx);
                         self.paint_gutter_indicators(layout, cx);
+                        self.paint_sticky_gutter_indicators(layout, cx);
                     }
 
                     if !layout.blocks.is_empty() {

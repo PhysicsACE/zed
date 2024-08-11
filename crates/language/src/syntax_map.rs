@@ -801,6 +801,21 @@ impl SyntaxSnapshot {
         )
     }
 
+    // pub fn boundary_matches<'a>(
+    //     &'a self,
+    //     boundary: Range<usize>,
+    //     range: Range<usize>,
+    //     buffer: &'a BufferSnapshot,
+    //     query: fn(&Grammar) -> Option<&Query>,
+    // ) -> SyntaxMapMatches {
+    //     SyntaxMapMatches::new(
+    //         range.clone(),
+    //         buffer.as_rope(),
+    //         self.layers_contained_in_range(boundary, range, buffer),
+    //         query,
+    //     )
+    // }
+
     #[cfg(test)]
     pub fn layers<'a>(&'a self, buffer: &'a BufferSnapshot) -> Vec<SyntaxLayer> {
         self.layers_for_range(0..buffer.len(), buffer).collect()
@@ -849,6 +864,54 @@ impl SyntaxSnapshot {
             None
         })
     }
+
+    // pub fn layers_contained_in_range<'a, T: ToOffset>(
+    //     &'a self,
+    //     boundary: Range<T>,
+    //     range: Range<T>,
+    //     buffer: &'a BufferSnapshot,
+    // ) -> impl 'a + Iterator<Item = SyntaxLayer> {
+    //     let start_offset = range.start.to_offset(buffer);
+    //     let end_offset = range.end.to_offset(buffer);
+    //     let start = buffer.anchor_before(start_offset);
+    //     let end = buffer.anchor_after(end_offset);
+
+    //     let boundary_start_offset = boundary.start.to_offset(buffer);
+    //     let boundary_end_offset = boundary.end.to_offset(buffer);
+    //     let boundary_start = buffer.anchor_before(boundary_start_offset);
+    //     let boundary_end = buffer.anchor_after(boundary_end_offset);
+
+    //     let mut cursor = self.layers.filter::<_, ()>(move |summary| {
+    //         let is_before_start = summary.range.end.cmp(&start, buffer).is_lt();
+    //         let is_after_end = summary.range.start.cmp(&end, buffer).is_gt();
+    //         let is_before_boundary = summary.range.end.cmp(&boundary_start, buffer).is_lt();
+    //         let is_after_boundary = summary.range.start.cmp(&boundary_end, buffer).is_gt();
+    //         !is_before_start && !is_after_end && !is_before_boundary && !is_after_boundary
+    //     });
+
+    //     cursor.next(buffer);
+    //     iter::from_fn(move || {
+    //         while let Some(layer) = cursor.item() {
+    //             let mut info = None;
+    //             if let SyntaxLayerContent::Parsed { tree, language } = &layer.content {
+    //                 let layer_start_offset = layer.range.start.to_offset(buffer);
+    //                 let layer_start_point = layer.range.start.to_point(buffer).to_ts_point();
+
+    //                 info = Some(SyntaxLayer {
+    //                     tree,
+    //                     language,
+    //                     depth: layer.depth,
+    //                     offset: (layer_start_offset, layer_start_point),
+    //                 });
+    //             }
+    //             cursor.next(buffer);
+    //             if info.is_some() {
+    //                 return info;
+    //             }
+    //         }
+    //         None
+    //     })
+    // }
 
     pub fn contains_unknown_injections(&self) -> bool {
         self.layers.summary().contains_unknown_injections

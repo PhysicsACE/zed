@@ -661,6 +661,42 @@ impl DisplaySnapshot {
         )
     }
 
+    pub fn minimal_highlighted_chunks<'a>(
+        &'a self,
+        display_rows: Range<DisplayRow>,
+        language_aware: bool,
+        editor_style: &'a EditorStyle,
+    ) -> impl Iterator<Item = HighlightedChunk<'a>> {
+        self.chunks(
+            display_rows,
+            language_aware,
+            HighlightStyles {
+                inlay_hint: Some(editor_style.inlay_hints_style),
+                suggestion: Some(editor_style.suggestions_style),
+            },
+        )
+        .map(|chunk| {
+            let mut highlight_style = chunk
+                .syntax_highlight_id
+                .and_then(|id| id.style(&editor_style.syntax));
+
+            if let Some(chunk_highlight) = chunk.highlight_style {
+                if let Some(highlight_style) = highlight_style.as_mut() {
+                    highlight_style.highlight(chunk_highlight);
+                } else {
+                    highlight_style = Some(chunk_highlight);
+                }
+            }
+
+            HighlightedChunk {
+                text: chunk.text,
+                style: highlight_style,
+                is_tab: chunk.is_tab,
+                renderer: chunk.renderer,
+            }
+        })
+    }
+
     pub fn highlighted_chunks<'a>(
         &'a self,
         display_rows: Range<DisplayRow>,

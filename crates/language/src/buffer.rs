@@ -2714,6 +2714,140 @@ impl BufferSnapshot {
             .map(Outline::new)
     }
 
+    // pub fn symbols_containing_in_range<T: ToOffset>(
+    //     &self,
+    //     range: Range<T>,
+    //     position: T,
+    //     theme: Option<&SyntaxTheme>,
+    // ) -> Option<Vec<OutlineItem<Anchor>>> {
+    //     let position position.to_offset(self);
+    //     let mut items = self.outline_items_containing_in_range(
+    //         range,
+    //         position.saturating_sub(1)..self.len().min(position + 1),
+    //         false,
+    //         theme,
+    //     )?;
+
+    //     let mut prev_depth = None;
+    //     items.retain(|item| {
+    //         let result = prev_depth.map_or(true, |prev_depth| item.depth > prev_depth);
+    //         prev_depth = Some(item.depth);
+    //         result
+    //     });
+    //     Some(items)
+    // }
+
+    // pub fn outline_items_containing_in_range<T: ToOffset>(
+    //     &self,
+    //     range: Range<T>,
+    //     position: Range<T>,
+    //     include_extra_context: bool,
+    //     theme: Option<&SyntaxTheme>,
+    // ) -> Option<Vec<OutlineItem<Anchor>>> {
+    //     let boundary = range.to_offset(self);
+    //     let range = position.to_offset(self);
+
+    //     let mut matches = self.syntax.boundary_matches(
+    //         boundary.clone(), range.clone(), &self.text, |grammar| {
+    //             // TODO: For the mvp, just use the queries for outline items
+    //             // but for sticky scroll, implement a context.scm file with
+    //             // the queires for each language and use its config here for
+    //             // the query function
+    //             grammar.outline_config.as_ref().map(|c| &c.query)
+    //         }
+    //     );
+
+    //     let configs = matches
+    //         .grammars()
+    //         .iter()
+    //         .map(|g| g.outline_config.as_ref().unwrap())
+    //         .collect::<Vec<_>>();
+
+    //     let mut items = Vec::new();
+    //     let mut annotation_row_ranges: Vec<Range<u32>> = Vec::new();
+    //     while let Some(mat) = matches.peek() {
+    //         let config = &configs[mat.grammar_index];
+    //         if let Some(item) =
+    //             self.next_outline_item(config, &mat, &range, include_extra_context, theme)
+    //         {
+    //             items.push(item);
+    //         } else if let Some(capture) = mat
+    //             .captures
+    //             .iter()
+    //             .find(|capture| Some(capture.index) == config.annotation_capture_ix)
+    //         {
+    //             let capture_range = capture.node.start_position()..capture.node.end_position();
+    //             let mut capture_row_range =
+    //                 capture_range.start.row as u32..capture_range.end.row as u32;
+    //             if capture_range.end.row > capture_range.start.row && capture_range.end.column == 0
+    //             {
+    //                 capture_row_range.end -= 1;
+    //             }
+    //             if let Some(last_row_range) = annotation_row_ranges.last_mut() {
+    //                 if last_row_range.end >= capture_row_range.start.saturating_sub(1) {
+    //                     last_row_range.end = capture_row_range.end;
+    //                 } else {
+    //                     annotation_row_ranges.push(capture_row_range);
+    //                 }
+    //             } else {
+    //                 annotation_row_ranges.push(capture_row_range);
+    //             }
+    //         }
+    //         matches.advance();
+    //     }
+
+    //     items.sort_by_key(|item| (item.range.start, Reverse(item.range.end)));
+
+    //     // Assign depths based on containment relationships and convert to anchors.
+    //     let mut item_ends_stack = Vec::<Point>::new();
+    //     let mut anchor_items = Vec::new();
+    //     let mut annotation_row_ranges = annotation_row_ranges.into_iter().peekable();
+    //     for item in items {
+    //         while let Some(last_end) = item_ends_stack.last().copied() {
+    //             if last_end < item.range.end {
+    //                 item_ends_stack.pop();
+    //             } else {
+    //                 break;
+    //             }
+    //         }
+
+    //         let mut annotation_row_range = None;
+    //         while let Some(next_annotation_row_range) = annotation_row_ranges.peek() {
+    //             let row_preceding_item = item.range.start.row.saturating_sub(1);
+    //             if next_annotation_row_range.end < row_preceding_item {
+    //                 annotation_row_ranges.next();
+    //             } else {
+    //                 if next_annotation_row_range.end == row_preceding_item {
+    //                     annotation_row_range = Some(next_annotation_row_range.clone());
+    //                     annotation_row_ranges.next();
+    //                 }
+    //                 break;
+    //             }
+    //         }
+
+    //         anchor_items.push(OutlineItem {
+    //             depth: item_ends_stack.len(),
+    //             range: self.anchor_after(item.range.start)..self.anchor_before(item.range.end),
+    //             text: item.text,
+    //             highlight_ranges: item.highlight_ranges,
+    //             name_ranges: item.name_ranges,
+    //             body_range: item.body_range.map(|body_range| {
+    //                 self.anchor_after(body_range.start)..self.anchor_before(body_range.end)
+    //             }),
+    //             annotation_range: annotation_row_range.map(|annotation_range| {
+    //                 self.anchor_after(Point::new(annotation_range.start, 0))
+    //                     ..self.anchor_before(Point::new(
+    //                         annotation_range.end,
+    //                         self.line_len(annotation_range.end),
+    //                     ))
+    //             }),
+    //         });
+    //         item_ends_stack.push(item.range.end);
+    //     }
+
+    //     Some(anchor_items)
+    // }
+
     /// Returns all the symbols that contain the given position.
     ///
     /// This method allows passing an optional [SyntaxTheme] to

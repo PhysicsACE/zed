@@ -509,6 +509,16 @@ impl MultiBuffer {
         self.read(cx).symbols_containing(offset, theme)
     }
 
+    pub fn symbols_containing_in_range<T: ToOffset>(
+        &self,
+        range: Range<T>,
+        offset: T,
+        theme: Option<&SyntaxTheme>,
+        cx: &AppContext,
+    ) -> Option<(BufferId, Vec<OutlineItem<Anchor>>)> {
+        self.read(cx).symbols_containing_in_range(range, offset, theme)
+    }
+
     pub fn edit<I, S, T>(
         &mut self,
         edits: I,
@@ -3698,6 +3708,52 @@ impl MultiBufferSnapshot {
                 .collect(),
         ))
     }
+
+    // pub fn symbols_containing_in_range<T: ToOffset>(
+    //     &self,
+    //     range: Range<T>,
+    //     offset: T,
+    //     theme: Option<&SyntaxTheme>,
+    // ) -> Option<(BufferId, Vec<OutlineItem<Anchor>>)> {
+    //     let excerpt_id = offset.excerpt_id;
+    //     let excerpt = self.excerpt(excerpt_id)?;
+
+    //     let start_anchor = range.start;
+    //     let end_anchor = range.end;
+    //     let boundary_range = start_anchor.text_anchor..end_anchor.text_anchor;
+
+    //     Some((
+    //         excerpt.buffer_id,
+    //         excerpt
+    //             .buffer
+    //             .symbols_containing_in_range(boundary_range, anchor.text_anchor, theme)
+    //             .into_iter()
+    //             .flatten()
+    //             .flat_map(|item| {
+    //                 Some(OutlineItem {
+    //                     depth: item.depth,
+    //                     range: self.anchor_in_excerpt(excerpt_id, item.range.start)?
+    //                         ..self.anchor_in_excerpt(excerpt_id, item.range.end)?,
+    //                     text: item.text,
+    //                     highlight_ranges: item.highlight_ranges,
+    //                     name_ranges: item.name_ranges,
+    //                     body_range: item.body_range.and_then(|body_range| {
+    //                         Some(
+    //                             self.anchor_in_excerpt(excerpt_id, body_range.start)?
+    //                                 ..self.anchor_in_excerpt(excerpt_id, body_range.end)?,
+    //                         )
+    //                     }),
+    //                     annotation_range: item.annotation_range.and_then(|body_range| {
+    //                         Some(
+    //                             self.anchor_in_excerpt(excerpt_id, body_range.start)?
+    //                                 ..self.anchor_in_excerpt(excerpt_id, body_range.end)?,
+    //                         )
+    //                     }),
+    //                 })
+    //             })
+    //             .collect(),
+    //     ))
+    // }
 
     fn excerpt_locator_for_id(&self, id: ExcerptId) -> &Locator {
         if id == ExcerptId::min() {
